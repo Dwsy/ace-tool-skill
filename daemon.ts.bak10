@@ -132,7 +132,6 @@ class RpcClient {
           }
         }
       } catch (error) {
-      console.error("[HTTP] RPC error:", error);
         console.error("Output reader error:", error);
       }
     };
@@ -367,7 +366,6 @@ class HttpServer {
       if (!match) return new Response('Web UI not found', { status: 404 });
       return new Response(match[1], { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
     } catch (error) {
-      console.error("[HTTP] RPC error:", error);
       console.error('Failed to load Web UI:', error);
       return new Response('Failed to load Web UI', { status: 500 });
     }
@@ -412,7 +410,6 @@ class HttpServer {
         headers: { "Content-Type": "application/json; charset=utf-8" },
       });
     } catch (error) {
-      console.error("[HTTP] RPC error:", error);
       return new Response(JSON.stringify({ error: (error as Error).message }), {
         status: 500,
         headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -557,7 +554,6 @@ async function main() {
     await new Promise(() => {}); // 永久运行
 
   } catch (error) {
-      console.error("[HTTP] RPC error:", error);
     console.error('Failed to start daemon:', error);
     process.exit(1);
   }
