@@ -1,0 +1,27 @@
+{
+  "name": "ace-tool-skill",
+  "version": "1.0.0",
+  "description": "Semantic code search using AugmentCode for Pi Agent",
+  "type": "module",
+  "scripts": {
+    "daemon": "bun run daemon.ts",
+    "client": "bun run client.ts",
+    "server": "bun run server.ts",
+    "start": "bun run server.ts",
+    "dev": "bun run daemon.ts & bun run server.ts"
+  },
+  "keywords": [
+    "semantic-search",
+    "code-search",
+    "augmentcode",
+    "mcp",
+    "pi-agent"
+  ],
+  "author": "Dwsy",
+  "license": "MIT",
+  "dependencies": {},
+  "devDependencies": {},
+  "engines": {
+    "bun": ">=1.0.0"
+  }
+}
