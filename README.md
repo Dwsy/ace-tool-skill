@@ -22,21 +22,44 @@ ACE Tool provides semantic code search capabilities through the AugmentCode MCP 
 
 ## 📋 Prerequisites
 
-### Required
-- Bun runtime
-- ACE MCP Server access (requires base URL and API key)
+### Required Dependencies
+
+1. **Bun runtime**: JavaScript runtime
+2. **ACE CLI Tool**: Required CLI tool for ACE MCP server
+   - Repository: https://github.com/eastxiaodong/ace-tool
+   - Installation: See the CLI tool repository for setup instructions
 
 ### Installation
 
 ```bash
 cd ~/.pi/agent/skills/ace-tool
 
-# Install dependencies (if needed)
+# 1. Install ACE CLI Tool (required dependency)
+# Visit: https://github.com/eastxiaodong/ace-tool
+# Follow the installation instructions in that repository
+
+# 2. Install dependencies (if needed)
 bun install
 
-# Configure ACE MCP Server
+# 3. Configure ACE MCP Server
 cp .env.example .env
 # Edit .env with your ACE server credentials
+```
+
+### ACE CLI Tool Setup
+
+The ACE CLI Tool provides the underlying functionality for semantic code search. You must install it before using this skill:
+
+```bash
+# Clone the ACE CLI Tool
+git clone https://github.com/eastxiaodong/ace-tool.git
+cd ace-tool
+
+# Install and configure
+# Follow the repository's README for installation steps
+
+# Make sure the CLI is available in your PATH
+ace-tool --version  # Verify installation
 ```
 
 ## 🔧 Configuration
@@ -46,6 +69,9 @@ cp .env.example .env
 Create a `.env` file in the skill directory:
 
 ```bash
+# ACE CLI Tool Configuration
+ACE_CLI_PATH="/path/to/ace-tool"  # Path to ACE CLI tool (optional if in PATH)
+
 # ACE MCP Server Configuration
 ACE_BASE_URL="https://your-ace-server.com/relay"
 ACE_API_KEY="your-ace-api-key-here"
@@ -53,6 +79,18 @@ ACE_PORT=4231
 ```
 
 **⚠️ Security**: Never commit `.env` to version control. Use `.env.example` as a template.
+
+### Verifying ACE CLI Tool Installation
+
+Before using this skill, verify that the ACE CLI Tool is properly installed:
+
+```bash
+# Check if ACE CLI is available
+ace-tool --version
+
+# Test basic functionality
+ace-tool search "test query"  # Should work if configured
+```
 
 ## 🚀 Usage
 
@@ -205,13 +243,26 @@ rg "API_KEY"
 1. **daemon.ts**: Persistent daemon that maintains index state
 2. **client.ts**: Client script for interacting with ACE MCP server
 3. **server.ts**: Web UI server for testing and development
-4. **.ace-tool/**: Runtime directory for logs and cache
+4. **ACE CLI Tool**: External dependency providing core functionality
+5. **.ace-tool/**: Runtime directory for logs and cache
 
 ### Data Flow
 
 ```
-User Query → Web UI / Client → ACE MCP Server → Indexed Code → Results
+User Query → Web UI / Client → ACE CLI Tool → ACE MCP Server → Indexed Code → Results
 ```
+
+### Dependency Relationship
+
+```
+ACE Tool Skill (this repository)
+        ↓ depends on
+ACE CLI Tool (eastxiaodong/ace-tool)
+        ↓ uses
+ACE MCP Server
+```
+
+**ACE CLI Tool** acts as a bridge between this skill and the ACE MCP server, providing the core semantic search functionality.
 
 ### Web UI Architecture
 
@@ -303,10 +354,38 @@ MIT License - See [LICENSE](LICENSE) file
 
 ## 🔗 Resources
 
+- **ACE CLI Tool**: https://github.com/eastxiaodong/ace-tool - Required dependency
 - **AugmentCode**: https://augmentcode.dev/
 - **MCP Protocol**: https://modelcontextprotocol.io/
 - **Pi Agent**: https://github.com/badlogic/pi-mono
 - **ACE MCP Server**: Contact your administrator for access
+
+## 🤝 Dependencies
+
+### External Dependencies
+
+This skill depends on the following external tool:
+
+- **[ACE CLI Tool](https://github.com/eastxiaodong/ace-tool)**: Required CLI tool for ACE MCP server
+  - Provides core semantic search functionality
+  - Acts as a bridge between this skill and ACE MCP server
+  - Must be installed and configured separately
+
+### Installation Order
+
+1. Install ACE CLI Tool from https://github.com/eastxiaodong/ace-tool
+2. Configure ACE CLI Tool according to its documentation
+3. Install this skill (clone and configure)
+4. Configure `.env` with your ACE server credentials
+5. Start using
+
+### Integration
+
+This skill wraps the ACE CLI Tool to provide:
+- Web UI interface
+- Pi Agent integration
+- Standardized configuration
+- Enhanced user experience
 
 ## 📞 Support
 
