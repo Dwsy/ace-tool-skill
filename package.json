@@ -1,14 +1,11 @@
 {
   "name": "ace-tool-skill",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Semantic code search using AugmentCode for Pi Agent",
   "type": "module",
   "scripts": {
     "daemon": "bun run daemon.ts",
-    "client": "bun run client.ts",
-    "server": "bun run server.ts",
-    "start": "bun run server.ts",
-    "dev": "bun run daemon.ts & bun run server.ts"
+    "start": "bun run daemon.ts"
   },
   "keywords": [
     "semantic-search",
