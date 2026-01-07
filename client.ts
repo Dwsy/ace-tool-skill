@@ -1,4 +1,6 @@
 import { spawn } from "bun";
+import { join } from "path";
+import { openSync, existsSync, mkdirSync } from "fs";
 
 // 加载配置
 // 注意：Client 也需要读一下 env 主要是为了知道端口
@@ -20,12 +22,18 @@ async function startServer() {
   // 获取 daemon.ts 的绝对路径
   const daemonPath = import.meta.dir + "/daemon.ts";
   
+  const logFile = join(import.meta.dir, ".ace-tool/daemon.log");
+  const logDir = join(import.meta.dir, ".ace-tool");
+  if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
+
   // 使用 bun 启动，完全分离进程
   Bun.spawn(["bun", "run", daemonPath], {
     env: { ...process.env }, // 传递环境变量
     cwd: import.meta.dir,
     detached: true, // 关键：让 daemon 独立运行
-    stdio: ["ignore", "ignore", "ignore"] // 不要在主进程中输出日志
+    stdout: Bun.file(logFile), 
+    stderr: Bun.file(logFile),
+    stdin: "ignore"
   }).unref(); // 让主进程不再等待子进程
 
   // 等待 Server 启动

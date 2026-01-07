@@ -1,4 +1,35 @@
 import { spawn } from "bun";
+import { join, resolve } from "path";
+import { existsSync, readFileSync, mkdirSync } from "fs";
+import { homedir } from "os";
+
+/**
+ * 解析路径，支持 ~ 扩展
+ */
+function resolvePath(p: string): string {
+  if (p.startsWith('~')) {
+    return join(homedir(), p.slice(1));
+  }
+  return resolve(p);
+}
+
+// 加载 .env
+const envPath = join(import.meta.dir, ".env");
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, "utf-8");
+  envContent.split("\n").forEach(line => {
+    const [key, ...value] = line.split("=");
+    if (key && value && value.length > 0) {
+      let val = value.join("=").trim();
+      if (val.startsWith('"') && val.endsWith('"')) {
+        val = val.substring(1, val.length - 1);
+      } else if (val.startsWith("'") && val.endsWith("'")) {
+        val = val.substring(1, val.length - 1);
+      }
+      process.env[key.trim()] = val;
+    }
+  });
+}
 
 // 配置
 interface Config {
@@ -64,7 +95,7 @@ class RpcClient {
     this.process = null;
     this.pendingRequests = new Map();
     this.messageBuffer = "";
-    this.rpcTimeoutMs = configManager._config.rpcTimeoutSeconds * 1000;
+    this.rpcTimeoutMs = configManager.config.rpcTimeoutSeconds * 1000;
   }
 
   /**
@@ -73,11 +104,16 @@ class RpcClient {
   start(): void {
     console.log("Starting ace-tool process...");
 
+    const acePath = process.env.ACE_PATH || "ace-tool";
+    const logFile = join(import.meta.dir, ".ace-tool/ace-tool-raw.log");
+    const logDir = join(import.meta.dir, ".ace-tool");
+    if (!existsSync(logDir)) mkdirSync(logDir, { recursive: true });
+
     this.process = spawn({
-      cmd: ["ace-tool", "--base-url", this.configManager._config.baseUrl, "--token", this.configManager._config.apiKey, "--enable-log"],
+      cmd: [acePath, "--base-url", this.configManager.config.baseUrl, "--token", this.configManager.config.apiKey, "--enable-log"],
       stdin: "pipe",
       stdout: "pipe",
-      stderr: "inherit",
+      stderr: Bun.file(logFile),
     });
 
     console.log(`Ace-tool PID: ${this.process.pid}`);
@@ -121,7 +157,7 @@ class RpcClient {
                 const { resolve, reject } = this.pendingRequests.get(msg.id);
                 this.pendingRequests.delete(msg.id);
                 if (msg.error) {
-                  reject(msg.error);
+                  reject(new Error(typeof msg.error === 'string' ? msg.error : JSON.stringify(msg.error)));
                 } else {
                   resolve(msg.result);
                 }
@@ -132,7 +168,6 @@ class RpcClient {
           }
         }
       } catch (error) {
-      console.error("[HTTP] RPC error:", error);
         console.error("Output reader error:", error);
       }
     };
@@ -144,13 +179,17 @@ class RpcClient {
    * 发送 JSON-RPC 请求
    */
   async sendRpc(method: string, params: any, id?: string): Promise<any> {
-    const requestId = id || Math.floor(Math.random() * 1000000);
+    const requestId = id || Math.floor(Math.random() * 1000000).toString();
     const request = {
       jsonrpc: "2.0",
       id: requestId,
       method,
       params
     };
+
+    if (!this.process || !this.process.stdin) {
+      throw new Error("Ace-tool process is not running");
+    }
 
     this.process.stdin.write(new TextEncoder().encode(JSON.stringify(request) + "\n"));
     await this.process.stdin.flush();
@@ -180,6 +219,11 @@ class RpcClient {
       params
     };
 
+    if (!this.process || !this.process.stdin) {
+      console.error("Cannot send notification: process is not running");
+      return;
+    }
+
     this.process.stdin.write(new TextEncoder().encode(JSON.stringify(notification) + "\n"));
     await this.process.stdin.flush();
   }
@@ -200,6 +244,7 @@ class RpcClient {
       console.log("MCP Initialized successfully.");
     } catch (e) {
       console.error("MCP Initialization failed:", e);
+      throw e; // 重投异常以便 daemon 失败
     }
   }
 
@@ -223,7 +268,7 @@ class RpcClient {
 
     // 尝试优雅关闭
     this.process.kill('SIGTERM');
-    await new Promise(resolve => setTimeout(resolve, 5000));
+    await new Promise(resolve => setTimeout(resolve, 2000));
 
     // 如果还在运行，强制杀死
     if (this.process && this.process.pid) {
@@ -240,8 +285,8 @@ class RpcClient {
  */
 class HeartbeatManager {
   private timer: NodeJS.Timeout | null = null;
-  private lastActivityTime: number;
-  private timeoutMs: number;
+  public lastActivityTime: number;
+  public timeoutMs: number;
   private onTimeout: () => void;
 
   constructor(timeoutMinutes: number, onTimeout: () => void) {
@@ -271,8 +316,6 @@ class HeartbeatManager {
     this.timer = setInterval(() => {
       const elapsed = Date.now() - this.lastActivityTime;
       
-      console.log(`[Heartbeat] Last activity: ${Math.floor(elapsed / 60000)} minutes ago`);
-
       if (elapsed >= this.timeoutMs) {
         console.log(`[Heartbeat] No activity for ${this.timeoutMs / 60000} minutes, triggering timeout...`);
         this.onTimeout();
@@ -296,7 +339,7 @@ class HeartbeatManager {
   getRemainingMinutes(): number {
     const elapsed = Date.now() - this.lastActivityTime;
     const remaining = this.timeoutMs - elapsed;
-    return Math.ceil(remaining / 60000);
+    return Math.max(0, Math.ceil(remaining / 60000));
   }
 }
 
@@ -307,7 +350,7 @@ class HttpServer {
   private port: number;
   private rpcClient: RpcClient;
   private heartbeatManager: HeartbeatManager;
-  private server: any;
+  public server: any;
 
   constructor(port: number, rpcClient: RpcClient, heartbeatManager: HeartbeatManager) {
     this.port = port;
@@ -339,6 +382,7 @@ class HttpServer {
 
     // Web UI 页面
     if (url.pathname === "/" || url.pathname === "/web") {
+      this.heartbeatManager.updateActivity();
       return this.handleWebUI();
     }
 
@@ -349,6 +393,7 @@ class HttpServer {
 
     // 工具调用接口
     if (url.pathname === "/call" && req.method === "POST") {
+      this.heartbeatManager.updateActivity();
       return this.handleToolCall(req);
     }
 
@@ -361,13 +406,14 @@ class HttpServer {
    */
   private async handleWebUI(): Promise<Response> {
     try {
-      const webUIPath = new URL(import.meta.url).pathname.replace('daemon.ts', 'webui.ts');
-      const webUIContent = await Bun.file(webUIPath).text();
-      const match = webUIContent.match(/const HTML_TEMPLATE = `([\s\S]+?)`;/);
-      if (!match) return new Response('Web UI not found', { status: 404 });
-      return new Response(match[1], { headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+      const webUIPath = join(import.meta.dir, "webui.ts");
+      const { default: html } = await import(webUIPath);
+      if (!html) {
+        console.error("Web UI content is empty or undefined");
+        return new Response("Web UI content is empty", { status: 500 });
+      }
+      return new Response(html, { headers: { "Content-Type": "text/html; charset=utf-8" } });
     } catch (error) {
-      console.error("[HTTP] RPC error:", error);
       console.error('Failed to load Web UI:', error);
       return new Response('Failed to load Web UI', { status: 500 });
     }
@@ -379,16 +425,14 @@ class HttpServer {
   private async handleHealthCheck(): Promise<Response> {
     const elapsed = Date.now() - this.heartbeatManager.lastActivityTime;
     const remaining = this.heartbeatManager.getRemainingMinutes();
-    const heartbeatTimeout = this.heartbeatManager.timeoutMs / 60000;
-    const rpcTimeout = this.rpcClient.rpcTimeoutMs / 1000;
-
+    
     return new Response(JSON.stringify({
-      status: this.rpcClient.isRunning() ? 'running' : 'stopped',
-      uptime: Math.floor(elapsed / 1000), // 秒
+      status: this.rpcClient.isRunning() ? 'online' : 'stopped',
+      uptime: Math.floor(elapsed / 1000), 
       lastActivity: new Date(this.heartbeatManager.lastActivityTime).toISOString(),
-      remainingMinutes: remaining, // 剩余分钟
-      rpcTimeout: rpcTimeout,  // RPC 超时（秒）
-      heartbeatTimeout: heartbeatTimeout  // 心跳超时（分钟）
+      remainingMinutes: remaining,
+      rpcTimeout: this.rpcClient.configManager.config.rpcTimeoutSeconds,
+      heartbeatTimeout: this.rpcClient.configManager.config.heartbeatTimeoutMinutes
     }), {
       headers: { "Content-Type": "application/json; charset=utf-8" },
     });
@@ -398,15 +442,16 @@ class HttpServer {
    * 处理工具调用
    */
   private async handleToolCall(req: Request): Promise<Response> {
-    console.log("[HTTP] handleToolCall called");
     try {
       const body = await req.json();
-      console.log("[HTTP] Request body:", JSON.stringify(body));
       const { method, params } = body;
 
-      console.log("[HTTP] Calling RPC method:", method);
+      // 自动扩展项目路径中的 ~
+      if (params && params.arguments && params.arguments.project_root_path) {
+        params.arguments.project_root_path = resolvePath(params.arguments.project_root_path);
+      }
+
       const result = await this.rpcClient.sendRpc(method, params);
-      console.log("[HTTP] RPC result:", JSON.stringify(result));
 
       return new Response(JSON.stringify({ result }), {
         headers: { "Content-Type": "application/json; charset=utf-8" },
@@ -421,30 +466,21 @@ class HttpServer {
   }
 
   /**
-   * 停止服务器
-   */
-  async stop(): Promise<void> {
-    if (this.server) {
-      // Bun.serve 没有直接的 stop 方法
-      console.log("HTTP server stopped (process will exit when all connections close)");
-      this.server = null;
-    }
-  }
-
-  /**
    * 关闭服务器
    */
   async shutdown(): Promise<void> {
-    await this.stop();
+    if (this.server) {
+      this.server.stop();
+      this.server = null;
+    }
   }
 }
 
 /**
  * Daemon Facade（守护进程门面）
- * 负责管理 ace-tool 服务的生命周期
  */
 class DaemonFacade {
-  private config: ConfigManager;
+  public config: ConfigManager;
   private rpcClient: RpcClient;
   private heartbeatManager: HeartbeatManager;
   private httpServer: HttpServer;
@@ -453,75 +489,27 @@ class DaemonFacade {
     this.config = new ConfigManager();
     this.rpcClient = new RpcClient(this.config);
     this.heartbeatManager = new HeartbeatManager(
-      this.config._config.heartbeatTimeoutMinutes,
-      () => this.shutdown()
+      this.config.config.heartbeatTimeoutMinutes,
+      () => this.shutdown().then(() => process.exit(0))
     );
-    this.httpServer = new HttpServer(port || this.config._config.port, this.rpcClient, this.heartbeatManager);
+    this.httpServer = new HttpServer(port || this.config.config.port, this.rpcClient, this.heartbeatManager);
   }
 
-  /**
-   * 初始化所有组件
-   */
   async initialize(): Promise<void> {
     console.log("Initializing Daemon Facade...");
-    
-    // 1. 启动 ace-tool
     this.rpcClient.start();
-    
-    // 2. 初始化 MCP
     await this.rpcClient.initialize();
-    
-    // 3. 启动心跳
     this.heartbeatManager.start();
-    
-    // 4. 启动 HTTP 服务器
     this.httpServer.start();
-    
     console.log("✅ Daemon Facade initialized successfully");
   }
 
-  /**
-   * 关闭所有组件
-   */
   async shutdown(): Promise<void> {
     console.log("Shutting down Daemon Facade...");
-    
-    // 1. 停止心跳
     this.heartbeatManager.stop();
-    
-    // 2. 关闭 ace-tool
     await this.rpcClient.shutdown();
-    
-    // 3. 关闭 HTTP 服务器
     await this.httpServer.shutdown();
-    
     console.log("✅ Daemon Facade shutdown complete");
-  }
-
-  /**
-   * 获取状态
-   */
-  getStatus() {
-    return {
-      aceTool: {
-        running: this.rpcClient.isRunning(),
-        pid: this.rpcClient.isRunning() ? this.rpcClient.process.pid : null
-      },
-      heartbeat: {
-        running: this.heartbeatManager.timer !== null,
-        timeout: this.config._config.heartbeatTimeoutMinutes,  // 分钟
-        remaining: this.heartbeatManager.getRemainingMinutes(), // 分钟
-        lastActivity: new Date(this.heartbeatManager.lastActivityTime).toISOString()
-      },
-      config: {
-        heartbeatTimeout: this.config._config.heartbeatTimeoutMinutes,  // 分钟
-        rpcTimeout: this.config._config.rpcTimeoutSeconds,  // 秒
-      },
-      http: {
-        running: this.httpServer.server !== null,
-        port: this.config._config.port
-      }
-    };
   }
 }
 
@@ -529,39 +517,22 @@ class DaemonFacade {
  * 主入口
  */
 async function main() {
-  const daemon = new DaemonFacade();
-
   try {
+    const daemon = new DaemonFacade();
     await daemon.initialize();
 
     console.log("\n🎉 ACE Tool Daemon is running!");
-    console.log(`📡 Health: http://localhost:${daemon.config._config.port}/health`);
-    console.log(`🔍 API: http://localhost:${daemon.config._config.port}/call`);
-    console.log(`💡 Heartbeat: ${daemon.config._config.heartbeatTimeoutMinutes} 分钟`);
-    console.log(`⏱️  RPC Timeout: ${daemon.config._config.rpcTimeoutSeconds} 秒`);
-    console.log(`🌐️  Web UI: http://localhost:${daemon.config._config.port}/`);
-    console.log(`\nPress Ctrl+C to stop`);
+    console.log(`🌐️ Web UI: http://localhost:${daemon.config.config.port}/`);
 
-    // 优雅关闭
     process.on('SIGINT', async () => {
-      console.log('\n🛑️ Received SIGINT, shutting down...');
       await daemon.shutdown();
+      process.exit(0);
     });
-
-    process.on('SIGTERM', async () => {
-      console.log('\n🛑️ Received SIGTERM, shutting down...');
-      await daemon.shutdown();
-    });
-
-    // 保持进程运行
-    await new Promise(() => {}); // 永久运行
 
   } catch (error) {
-      console.error("[HTTP] RPC error:", error);
     console.error('Failed to start daemon:', error);
     process.exit(1);
   }
 }
 
-// 启动守护进程
 main();
