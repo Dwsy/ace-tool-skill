@@ -74,7 +74,7 @@ const HTML_TEMPLATE = `
             margin-bottom: 0.5rem;
             display: block;
         }
-        input[type="file"] {
+        input[type="text"] {
             width: 100%;
             background: var(--bg-secondary);
             border: 1px solid var(--border-color);
@@ -212,7 +212,7 @@ const HTML_TEMPLATE = `
         <div class="controls">
             <div class="control-group">
                 <span class="control-label" data-i18n="project.title">Project Path</span>
-                <input type="file" id="projectPath" webkitdirectory directory />
+                <input type="text" id="projectPath" placeholder="Enter project path (default: current directory)" />
             </div>
 
             <div class="control-group">
@@ -912,7 +912,7 @@ customElements.define('tab-control', TabControl);
             document.getElementById('enhanceQuery').placeholder = i18n.t('enhance.placeholder');
         }
 
-        // Handle project selection
+        // Handle project path input
         document.getElementById('projectPath').addEventListener('change', function(e) {
             const files = e.target.files;
             if (files && files.length > 0) {
