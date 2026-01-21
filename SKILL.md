@@ -1,76 +1,50 @@
 ---
 name: ace-tool
-description: This tool provides semantic, fuzzy search over the codebase. It is designed for high-level understanding and exploration when exact file names, symbols, or locations are unknown. It interprets natural language queries and retrieves conceptually relevant code rather than exact string matches. IMPORTANT: When an exact identifier, symbol name, or literal string is known, ALWAYS prefer using rg (ripgrep) for precise and exhaustive matching. Use this tool only when semantic understanding is required or when rg is insufficient.
----
+description: Semantic code search tool. Use `ace search "query"` for codebase search, `ace enhance "history+prompt"` for prompt enhancement. Prefer `rg` for exact matches.
 
+---
 
 # Ace Tool (AugmentCode)
 
-Bridged via a persistent Bun daemon to maintain index state.
+## 包装器
 
-## 执行环境
+`ace` 是 Bash 包装器（`/usr/local/bin/ace`），调用 `client.ts`。详见 `WRAPPER.md` 和 `COMPARISON.md`。
 
-| 路径类型 | 路径 | 基准目录 |
-|---------|------|---------|
-| **技能目录** | `~/.pi/agent/skills/ace-tool/` | 固定位置 |
-| **主脚本** | `~/.pi/agent/skills/ace-tool/client.ts` | 技能目录 |
-| **守护进程** | `~/.pi/agent/skills/ace-tool/daemon.ts` | 技能目录 |
-| **日志文件** | `.ace-tool/ace-tool.log` | **工作目录** (执行命令时的当前目录) |
-| **配置目录** | `~/.pi/agent/skills/ace-tool/.env` | 固定位置 |
-
-## 调用命令
+## 使用
 
 ```bash
-# 方式 1：从项目目录执行（推荐，确保项目上下文正确）
-cd /path/to/your/project
-bun ~/.pi/agent/skills/ace-tool/client.ts search "Where is the user authentication handled?"
+ace search "Where is auth?"
+ace s "auth"                    # 简写
+ace enhance "Add login page"
+ace e "Add login"               # 简写
 
-# 方式 2：从技能目录执行
-cd ~/.pi/agent/skills/ace-tool
-bun run client.ts search "Where is the user authentication handled?"
-
-# 方式 3：增强提示词（Web UI）
-bun ~/.pi/agent/skills/ace-tool/client.ts enhance "Add a login page"
+# 直接调用
+bun ~/.pi/agent/skills/ace-tool/client.ts search "query"
 ```
-
-## 路径说明
-
-- **日志位置**：``.ace-tool/ace-tool.log`` 位于**执行命令时的当前目录**，即项目根目录
-- **项目根目录**：执行命令时的 `process.cwd()`，用于代码检索的上下文
-- **技能脚本**：位于固定路径 `~/.pi/agent/skills/ace-tool/`，不会随工作目录变化
 
 ## Tools
 
-### 1. Codebase Search (`search_context`)
-**IMPORTANT: This is the PRIMARY tool for searching the codebase.**
+### 1. Codebase Search (`search`)
+**语义搜索 - 代码库搜索的首选工具**
 
-Use this tool when you need to understand the codebase, find functionality, or locate code based on natural language descriptions. It uses Augment's advanced context engine for high-quality semantic recall.
+- **何时使用**：需要理解代码库、查找功能、基于自然语言描述定位代码
+- **使用案例**：
+  - 不知道具体文件位置
+  - 需要高层信息
+  - **搜索代码/类/函数**优先使用此工具
+  - **编辑前规则**：编辑任何文件前，先用此工具收集上下文
 
-*   **When to Use:**
-    *   You don't know which files contain the info you need.
-    *   You need high-level information about a task.
-    *   **CRITICAL RULE:** When searching for code/classes/functions, **ALWAYS choose this tool over Bash/Grep**. Bash/Grep are only for exact string matching of non-code content.
-    *   **Pre-Edit Rule:** Before editing any file, ALWAYS first call this tool to gather detailed context about the symbols, classes, or methods involved.
+### 2. Prompt Enhancement (`enhance`)
+**提示增强 - 基于代码库上下文优化需求**
 
-*   **Usage:**
-    ```bash
-    ~/.pi/agent/skills/ace-tool/client.ts search "Where is the user authentication handled?"
-    ```
-
-### 2. Prompt Enhancement (`enhance_prompt`)
-Enhances user requirements by combining codebase context and conversation history to generate clearer, specific, and actionable prompts via a Web UI.
-
-*   **Trigger Methods:**
-    1.  **Explicit Markers:** User message contains `-enhance`, `-enhancer` (case-insensitive). E.g., `"Add login page -enhance"`.
-    2.  **Explicit Request:** User asks to "enhance my prompt".
-*   **Note:** This is NOT for general code optimization (e.g., "improve this function"), but for **requirement/prompt refinement**.
-
-*   **Usage:**
-    ```bash
-    ~/.pi/agent/skills/ace-tool/client.ts enhance "Add a login page"
-    ```
+- **触发方式**：
+  - 用户消息包含 `-enhance` 或 `-enhancer`（不区分大小写）
+  - 用户明确要求 "enhance my prompt"
+- **注意**：仅用于需求/提示词优化，不用于代码优化
 
 ## Notes
-*   **Single Process:** The daemon (`daemon.ts`) starts automatically and stays running.
-*   **Logs:** Check `.ace-tool/ace-tool.log` in your project root (where you execute the command).
-*   **Path Warning:** Always use the full path `~/.pi/agent/skills/ace-tool/client.ts` or `cd` to the skill directory first.
+
+- **包装器**：`/usr/local/bin/ace` 包装 `client.ts`，推荐使用
+- **守护进程**：daemon.ts 自动启动并保持运行
+- **日志**：项目根目录 `.ace-tool/ace-tool.log`
+- **完整文档**：`INDEX.md` | `WRAPPER.md` | `COMPARISON.md`
